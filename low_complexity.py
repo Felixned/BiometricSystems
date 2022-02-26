@@ -41,7 +41,7 @@ def import_db(db_path, nb_pers, train_split):
 image_height = 240
 image_width = 320
 
-#5 first algos are for pupil detection and the 6th one is for iris detection 
+#5 first algos are for pupil detection and the 6th one is for iris detection
 def algo1_low_complexity(img):
 	count = 0
 	pupilX = 0
@@ -80,7 +80,7 @@ def algo1_low_complexity(img):
 					pupilDiameter = difference 
 					pupilX = (long_black_zone_last+long_black_zone_first)//2
 					pupilY = i
-		threshold = threshold + 1
+		threshold = threshold + 20
 
 	return img,pupilX, pupilY, pupilDiameter, threshold
 
@@ -196,9 +196,13 @@ def algo6_low_complexity(img, pupilX, pupilY, pupilDiameter):
 
 def low_complexity(img, visualize = False):
 
+	#blurred image in order to erase the reflections on the pupil
+	blurred_img = cv2.medianBlur(img,25)
+
+
 	#FIRST ALGO
 	#print(algo1_low_complexity(img))
-	result_algo1 = algo1_low_complexity(img)
+	result_algo1 = algo1_low_complexity(blurred_img)
 	pupilX = result_algo1[1]
 	pupilY = result_algo1[2]
 	pupilDiameter = result_algo1[3]
@@ -211,12 +215,13 @@ def low_complexity(img, visualize = False):
 	print(threshold)
 	"""
 
-	img_algo1 = img.copy()
+	img_algo1 = blurred_img.copy()
 	img_algo1 = cv2.circle (img_algo1, (pupilX, pupilY), pupilDiameter//2, (255,255,255), 1)
+	cv2.imshow("img_algo1",img_algo1)
 
 	#SECOND ALGO
 	#print(algo2_low_complexity(img, pupilX, pupilY, pupilDiameter, threshold))
-	result_algo2 = algo2_low_complexity(img, pupilX, pupilY, pupilDiameter//2, threshold)
+	result_algo2 = algo2_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter//2, threshold)
 	pupilX = result_algo2[1]
 	pupilY = result_algo2[2]
 	pupilDiameter = result_algo2[3]
@@ -229,46 +234,42 @@ def low_complexity(img, visualize = False):
 	print(threshold)
 	"""
 
-	img_algo2 = img.copy()
+	img_algo2 = blurred_img.copy()
 	img_algo2 = cv2.circle (img_algo2, (pupilX, pupilY), pupilDiameter//2, (255,255,0), 1)
 
 	#THIRD ALGO
 	#print(algo3_low_complexity(img, pupilX, pupilY, pupilDiameter, threshold))
-	result_algo3 = algo3_low_complexity(img, pupilX, pupilY, pupilDiameter//2, threshold)
+	result_algo3 = algo3_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter//2, threshold)
 	pupilX = result_algo3[1]
 	pupilY = result_algo3[2]
 	pupilDiameter = result_algo3[3]
 	threshold = result_algo3[4]
 
-	img_algo3 = img.copy()
+	img_algo3 = blurred_img.copy()
 	img_algo3 = cv2.circle (img_algo3, (pupilX, pupilY), pupilDiameter//2, (255,255,0), 1)
-	cv2.imshow("img_algo3",img_algo3)
 
 	#FOURTH ALGO
 	#print(algo4_low_complexity(img, pupilX, pupilY, pupilDiameter, threshold))
-	result_algo4 = algo4_low_complexity(img, pupilX, pupilY, pupilDiameter//2, threshold)
+	result_algo4 = algo4_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter//2, threshold)
 	pupilX = result_algo4[1]
 	pupilY = result_algo4[2]
 	pupilDiameter = result_algo4[3]
 	threshold = result_algo4[4]
 
-	img_algo4 = img.copy()
+	img_algo4 = blurred_img.copy()
 	img_algo4 = cv2.circle (img_algo4, (pupilX, pupilY), pupilDiameter//2, (255,255,0), 1)
-	cv2.imshow("img_algo4",img_algo4)
 
 
 	#FIFTH ALGO
 	#print(algo5_low_complexity(img, pupilX, pupilY, pupilDiameter, threshold))
-	result_algo5 = algo5_low_complexity(img, pupilX, pupilY, pupilDiameter//2, threshold)
+	result_algo5 = algo5_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter//2, threshold)
 	pupilX = result_algo5[1]
 	pupilY = result_algo5[2]
 	pupilDiameter = result_algo5[3]
 	threshold = result_algo5[4]
 
-	img_algo5 = img.copy()
+	img_algo5 = blurred_img.copy()
 	img_algo5 = cv2.circle (img_algo5, (pupilX, pupilY), pupilDiameter//2, (255,255,0), 1)
-	cv2.imshow("img_algo5",img_algo5)
-
 
 	#sixth algo
 
@@ -296,8 +297,7 @@ print("Taille test set :", len(test_set))
 
 
 img = train_set[0][1]
-
-cv2.imshow(train_set[0][0], img)
+#cv2.imshow(train_set[0][0], img)
 
 
 # IRIS DETECTION
