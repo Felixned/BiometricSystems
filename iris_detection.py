@@ -3,7 +3,9 @@ import numpy as np
 import glob
 import os
 
+import matplotlib.pyplot as plt
 
+import cProfile
 
 
 # DATA IMPORT
@@ -111,6 +113,14 @@ def hysteresis(amp, ksize):
 	rg = (ksize-1)//2
 
 	amp_1 = amp.copy()
+	
+	# coo = np.where(amp_1[rg:amp.shape[0]-rg, rg:amp.shape[1]-rg] == 128)
+
+	# amp_1[coo] = (255 if scan_strong(amp_1, coo[0], coo[1], rg) else 0)
+
+
+	#amp_1[ amp_1[rg:amp.shape[0]-rg, rg:amp.shape[1]-rg] == 128 ] = 255
+
 	for y in range(rg, amp.shape[0]-rg):
 		for x in range(rg, amp.shape[1]-rg):
 
@@ -145,7 +155,9 @@ def hysteresis(amp, ksize):
 
 
 
-def weighted_canny(img, ksize, wx, visualize = True):
+def weighted_canny(img, ksize, wx, low, high, visualize = True):
+	#https://www.adeveloperdiary.com/data-science/computer-vision/implement-canny-edge-detector-using-python-from-scratch/
+	#https://docs.opencv.org/3.4/da/d22/tutorial_py_canny.html
 	
 	# Denoising
 	img_gaus = cv2.GaussianBlur(img, (ksize, ksize), 0)
@@ -162,7 +174,7 @@ def weighted_canny(img, ksize, wx, visualize = True):
 	amp_nonmax = non_max_suppr(amp, angle)
 
 	# 2 level thresholding
-	amp_thresh = amp_threshold(amp_nonmax, 40, 80)
+	amp_thresh = amp_threshold(amp_nonmax, low, high)
 	
 	# Hysteresis
 	amp_hyst = hysteresis(amp_thresh, 7)
@@ -181,16 +193,123 @@ def weighted_canny(img, ksize, wx, visualize = True):
 	return amp_hyst
 
 
+def test_bound(shape, y, x):
+	if y < 0 or y > shape[0] :
+		return False
 
-def daugman_scan(img, center, rad_min, rad_max, rad_step):
-	pass
+	elif x < 0 or y > shape[1] :
+		return False
+
+	return True
 
 
 
-def detect_iris(img, rad_min=30, rad_max=150, rad_step=3, px_step=2, ratio=3/4):
 
-	img_roi = ROI(img, ratio)
-	cv2.imshow("ROI", img_roi)
+def hough_circle(edge, accumulator, y, x, rad):
+
+	list_deg = np.linspace(0, 360, int(2*np.pi*rad))
+	list_y = np.clip(np.int32(np.round(np.sin(list_deg) * rad)) + y, 0, edge.shape[0]-1)
+	list_x = np.clip(np.int32(np.round(np.cos(list_deg) * rad)) + x, 0, edge.shape[1]-1)
+
+	accumulator[list_y, list_x] += 1
+
+
+def hough_circle_cv(edge, accumulator, y, x, rad, color):
+	cv2.circle(accumulator, (y, x), rad, color, 1)
+	
+
+
+def hough_transform(edge, rad_min=10, rad_max=200, rad_step=3, px_step=2, ratio=4/4):
+
+	edge_roi = ROI(edge, ratio)
+	cv2.imshow("ROI", edge_roi)
+
+	nb_rad = 1+((rad_max - rad_min)//rad_step)
+
+	accumulator = np.zeros((nb_rad, edge_roi.shape[0]+(2*rad_max), edge_roi.shape[1]+(2*rad_max)), dtype=np.uint32)
+	temp = np.zeros(edge_roi.shape, dtype=np.uint8)
+
+
+	nz_edges = np.nonzero(edge_roi)
+	print("nz_edges", len(nz_edges[0]))
+
+	for r in range(nb_rad):
+
+		rad = rad_min + rad_step*r
+
+		list_deg = np.arange(0, 360)
+		list_y = np.int32(np.round(np.sin(list_deg) * rad))
+		list_x = np.int32(np.round(np.cos(list_deg) * rad))
+
+		for i in range(0, len(nz_edges[0]), px_step):
+
+			y = nz_edges[0][i]
+			x = nz_edges[1][i]
+
+			# hough_circle_cv(edge, temp, y, x, rad, 1)
+			# accumulator += temp
+			# hough_circle_cv(edge, temp, y, x, rad, 0)
+
+			#accumulator[np.clip(list_y+y, 0, edge_roi.shape[0]-1), np.clip(list_x+x, 0, edge_roi.shape[1]-1)] += 1
+			accumulator[r, list_y+y+rad_max, list_x+x+rad_max] += 1
+
+
+		print(rad)
+
+
+	#print(accumulator)
+
+
+	#cv2.imshow("accumulator", accumulator/np.max(accumulator))
+	#max_acc_center = np.argmax(accumulator)
+
+	accumulator_roi = accumulator[:, rad_max:rad_max+edge_roi.shape[0], rad_max:rad_max+edge_roi.shape[1]]
+
+
+	return accumulator
+
+
+def hough_best_circles(accumulator, region, peak_ratio=2.5):
+
+	plot_values = []
+	plot_pnsr = []
+
+	for r in range(accumulator.shape[0]):
+
+		center_xy = np.unravel_index(np.argmax(accumulator[r, :, :], axis=None), accumulator[r, :, :].shape)
+
+		noise_region = img_hough[
+								#np.clip(r-region, 0, img_hough.shape[0]) : np.clip(r+region, 0, img_hough.shape[0]),
+								r,
+								np.clip(center_xy[0]-region, 0, img_hough.shape[1]) : np.clip(center_xy[0]+region, 0, img_hough.shape[1]),
+								np.clip(center_xy[1]-region, 0, img_hough.shape[2]) : np.clip(center_xy[1]+region, 0, img_hough.shape[2])
+								]
+
+		center_value = img_hough[r, center_xy[0], center_xy[1]]
+
+		noise_value = (np.sum(noise_region)-center_value) / (noise_region.size-1)
+		psnr = center_value/noise_value
+
+		print("Radius index", r, "center", center_xy, "value", center_value, "psnr", np.round(psnr, 2), psnr>peak_ratio)
+
+		plot_values.append(center_value)
+		plot_pnsr.append(psnr*3)
+
+
+		img_rad = np.uint8(255*(img_hough[r, :, :]/np.max(img_hough[r, :, :])))
+
+		cv2.circle(img_rad, (center_xy[1], center_xy[0]), 3, 255)
+
+		cv2.imshow("Hough", img_rad)
+		cv2.waitKey(0)
+
+
+	return plot_values, plot_pnsr
+
+
+
+
+
 
 
 
@@ -212,10 +331,76 @@ img = train_set[0][1]
 cv2.imshow(train_set[0][0], img)
 
 
-
 # IRIS DETECTION
 
 #detect_iris(img)
-img_edge = weighted_canny(img, 3, 0.5)
 
-cv2.waitKey(0)
+img_edge = weighted_canny(img, 3, 0.5, 40, 80, False)
+
+cv2.imshow("Canny implementation", img_edge)
+
+img_hough = hough_transform(img_edge, rad_min=10, rad_max=250, rad_step=1, px_step=2, ratio=4/4)
+#hough_transform(img_edge)
+
+#cv2.waitKey(0)
+
+values, psnr = hough_best_circles(img_hough, 20, 4)
+
+cv2.waitKey(1)
+
+
+plt.plot(range(len(values)), values)
+plt.plot(range(len(values)), psnr)
+plt.show()
+
+
+
+# for i in range(len(img_hough)):
+
+# 	cv2.imshow("Hough", img_hough[i, :, :]/np.max(img_hough[i, :, :]))
+
+# 	center = np.unravel_index(np.argmax(img_hough[i, :, :], axis=None), img_hough[i, :, :].shape)
+# 	print(i, center, img_hough[i, center[0], center[1]])
+
+# 	img_rad = np.uint8(255*(img_hough[i, :, :]/np.max(img_hough[i, :, :])))
+
+# 	cv2.circle(img_rad, (center[1], center[0]), 3, 255)
+
+# 	cv2.imshow("Hough", img_rad)
+# 	cv2.waitKey(0)
+
+
+# blur = cv2.medianBlur(img,5)
+# circles = cv2.HoughCircles(blur,cv2.HOUGH_GRADIENT,1,20,param1=90,param2=10,minRadius=40,maxRadius=100)
+
+
+# circles = circles.astype(int)[0]
+# print(circles)
+
+# for i in circles[0:1]:
+# 	# draw the outer circle
+# 	cv2.circle(img,(i[0],i[1]),i[2],255,1)
+# 	# draw the center of the circle
+# 	cv2.circle(img,(i[0],i[1]),2,255,3)
+
+
+# cv2.imshow('detected circles',img)
+
+
+# p = circles[0]
+# roi = blur[p[1]-p[2]:p[1]+p[2], p[0]-p[2]:p[0]+p[2]]
+
+# circles2 = cv2.HoughCircles(roi,cv2.HOUGH_GRADIENT,1,20,param1=90,param2=10,minRadius=10,maxRadius=40)
+# circles2 = circles2.astype(int)[0]
+
+# for i in circles2[0:1]:
+# 	# draw the outer circle
+# 	cv2.circle(img,(i[0]+p[0]-p[2],i[1]+p[1]-p[2]),i[2],255,1)
+# 	# draw the center of the circle
+# 	cv2.circle(img,(i[0]+p[0]-p[2],i[1]+p[1]-p[2]),2,255,3)
+
+
+# cv2.imshow('detected circles',img)
+
+#cv2.imshow("Canny cv2", cv2.Canny(img, 40, 80, 3))
+
