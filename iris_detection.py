@@ -1,11 +1,13 @@
 import cv2, imutils
 import numpy as np
 import glob
-import os
+import os, time
 
 import matplotlib.pyplot as plt
 
 import cProfile
+
+from smoothed_zscore_algo import *
 
 
 # DATA IMPORT
@@ -156,11 +158,21 @@ def hysteresis(amp, ksize):
 
 
 def weighted_canny(img, ksize, wx, low, high, visualize = True):
+	"""
+	img : grayscale img
+	ksize : gaussian kernel
+	wx : weight % on x sobel
+	low : low threshold
+	high : high threshold
+	visualize = show all steps
+	"""
+
 	#https://www.adeveloperdiary.com/data-science/computer-vision/implement-canny-edge-detector-using-python-from-scratch/
 	#https://docs.opencv.org/3.4/da/d22/tutorial_py_canny.html
 	
 	# Denoising
 	img_gaus = cv2.GaussianBlur(img, (ksize, ksize), 0)
+	#img_gaus = cv2.GaussianBlur(img_gaus, (ksize, ksize), 0)
 
 	# Sobel
 	grad_x = np.uint8(np.abs(cv2.Sobel(img_gaus, cv2.CV_64F, 1, 0, ksize)))
@@ -177,7 +189,7 @@ def weighted_canny(img, ksize, wx, low, high, visualize = True):
 	amp_thresh = amp_threshold(amp_nonmax, low, high)
 	
 	# Hysteresis
-	amp_hyst = hysteresis(amp_thresh, 7)
+	amp_hyst = hysteresis(amp_thresh, 7) # odd value ksize
 	
 
 	if visualize:
@@ -266,49 +278,81 @@ def hough_transform(edge, rad_min=10, rad_max=200, rad_step=3, px_step=2, ratio=
 	accumulator_roi = accumulator[:, rad_max:rad_max+edge_roi.shape[0], rad_max:rad_max+edge_roi.shape[1]]
 
 
-	return accumulator
+	return accumulator_roi
 
 
 def hough_best_circles(accumulator, region, peak_ratio=2.5):
 
 	plot_values = []
 	plot_pnsr = []
+	centers = []
 
 	for r in range(accumulator.shape[0]):
 
 		center_xy = np.unravel_index(np.argmax(accumulator[r, :, :], axis=None), accumulator[r, :, :].shape)
 
-		noise_region = img_hough[
+		#noise_region = accumulator[
 								#np.clip(r-region, 0, img_hough.shape[0]) : np.clip(r+region, 0, img_hough.shape[0]),
-								r,
-								np.clip(center_xy[0]-region, 0, img_hough.shape[1]) : np.clip(center_xy[0]+region, 0, img_hough.shape[1]),
-								np.clip(center_xy[1]-region, 0, img_hough.shape[2]) : np.clip(center_xy[1]+region, 0, img_hough.shape[2])
-								]
+								# r,
+								# np.clip(center_xy[0]-region, 0, accumulator.shape[1]) : np.clip(center_xy[0]+region, 0, accumulator.shape[1]),
+								# np.clip(center_xy[1]-region, 0, accumulator.shape[2]) : np.clip(center_xy[1]+region, 0, accumulator.shape[2])
+								# ]
 
-		center_value = img_hough[r, center_xy[0], center_xy[1]]
+		center_value = accumulator[r, center_xy[0], center_xy[1]]
 
-		noise_value = (np.sum(noise_region)-center_value) / (noise_region.size-1)
-		psnr = center_value/noise_value
+		#noise_value = (np.sum(noise_region)-center_value) / (noise_region.size-1)
+		#psnr = center_value/noise_value
 
-		print("Radius index", r, "center", center_xy, "value", center_value, "psnr", np.round(psnr, 2), psnr>peak_ratio)
+		#print("Radius index", r, "center", center_xy, "value", center_value, "psnr", np.round(psnr, 2), psnr>peak_ratio)
 
 		plot_values.append(center_value)
-		plot_pnsr.append(psnr*3)
+		#plot_pnsr.append(psnr*3)
+		centers.append(center_xy)
 
 
-		img_rad = np.uint8(255*(img_hough[r, :, :]/np.max(img_hough[r, :, :])))
+		img_rad = np.uint8(255*(accumulator[r, :, :]/np.max(accumulator[r, :, :])))
 
 		cv2.circle(img_rad, (center_xy[1], center_xy[0]), 3, 255)
 
 		cv2.imshow("Hough", img_rad)
-		cv2.waitKey(0)
+		cv2.waitKey(1)
 
 
-	return plot_values, plot_pnsr
+	return plot_values, plot_pnsr, centers
 
 
 
+def peak_detect(values, lag=10, threshold=3.5, influence=0.1, visualize=False):
+	results = thresholding_algo(values, lag=lag, threshold=threshold, influence=influence)
 
+	peaks = results["signals"]
+	avg = results["avgFilter"]
+	std = results["stdFilter"]
+
+	if visualize:
+		plt.plot(range(len(values)), values)
+		plt.plot(range(len(peaks)), peaks)
+
+		plt.plot(range(len(avg)), avg)
+		plt.plot(range(len(avg)), avg + threshold*std)
+		plt.plot(range(len(avg)), avg - threshold*std)
+
+		plt.show()
+	#plt.plot(range(len(values)), psnr)
+
+	peaks = np.transpose(np.argwhere(peaks == 1))[0].tolist()
+
+	scored_peaks = []
+	for peak in peaks:
+
+		try:
+			score = int(values[peak])-int(values[peak-1]) + int(values[peak])-int(values[peak+1])
+		except Exception:
+			score = 0
+
+		scored_peaks.append([score, peak+1])
+
+	return sorted(scored_peaks, reverse=True)
 
 
 
@@ -326,32 +370,113 @@ print("Taille train set :", len(train_set))
 print("Taille test set :", len(test_set))
 
 
-img = train_set[0][1]
-
-cv2.imshow(train_set[0][0], img)
+for i in range(200, 300):
 
 
-# IRIS DETECTION
+	img = ROI(train_set[i][1], 3/4)
 
-#detect_iris(img)
-
-img_edge = weighted_canny(img, 3, 0.5, 40, 80, False)
-
-cv2.imshow("Canny implementation", img_edge)
-
-img_hough = hough_transform(img_edge, rad_min=10, rad_max=250, rad_step=1, px_step=2, ratio=4/4)
-#hough_transform(img_edge)
-
-#cv2.waitKey(0)
-
-values, psnr = hough_best_circles(img_hough, 20, 4)
-
-cv2.waitKey(1)
+	cv2.imshow("Input", img)
 
 
-plt.plot(range(len(values)), values)
-plt.plot(range(len(values)), psnr)
-plt.show()
+	# IRIS DETECTION
+	
+	rad_step = 1
+	lag = 10
+
+
+	#detect_iris(img)
+
+	t1 = time.time()
+
+	img_edge = weighted_canny(img, ksize=5, wx=0.5, low=30, high=80, visualize=False)
+	#img_edge = weighted_canny(img, 5, 0.5, 40, 80, False)
+
+	cv2.imshow("Canny implementation", img_edge)
+
+
+	"""
+	Detect iris in rad_iris
+	Detect pupille in iris roi
+	"""
+
+	# IRIS
+
+	rad_iris = (35, 70)
+
+	img_hough_iris = hough_transform(img_edge, rad_min=rad_iris[0], rad_max=rad_iris[1], rad_step=rad_step, px_step=2, ratio=4/4)
+	values, psnr, centers = hough_best_circles(img_hough_iris, 20, 4)
+	# scored_peaks = peak_detect(values, lag=lag, visualize=True)
+	# print("Scored peaks", scored_peaks)
+
+	best_index = np.argmax(values)
+	center_iris = centers[best_index]
+
+	radius_iris = rad_iris[0]+(best_index*rad_step)
+
+	cv2.circle(img, (center_iris[1], center_iris[0]), radius_iris, 255)
+
+	# for score, peak in scored_peaks[:1]:
+	# 	cv2.circle(img, (centers[peak][1], centers[peak][0]), rad_iris[0]+(peak*rad_step), 255)
+
+
+	cv2.imshow("Input", img)
+	cv2.waitKey(1)
+
+
+
+
+	# PUPILLE
+
+	roi_ratio = 0.8
+
+	rad_pupille = (10, int(radius_iris*0.8))
+
+	iris_edge_roi = img_edge[center_iris[0]-int(radius_iris*roi_ratio):center_iris[0]+int(radius_iris*roi_ratio), center_iris[1]-int(radius_iris*roi_ratio):center_iris[1]+int(radius_iris*roi_ratio)]
+
+	img_hough_pupille = hough_transform(iris_edge_roi, rad_min=rad_pupille[0], rad_max=rad_pupille[1], rad_step=rad_step, px_step=2, ratio=4/4)
+	#cv2.waitKey(0)
+
+	values, psnr, centers = hough_best_circles(img_hough_pupille, 20, 4)
+	print(values)
+
+	best_index = np.argmax(values)
+	center_pupille = centers[best_index]
+
+	radius_pupille = rad_pupille[0]+(best_index*rad_step)
+
+	cv2.circle(img, (center_pupille[1]+center_iris[1]-int(radius_iris*roi_ratio), center_pupille[0]+center_iris[0]-int(radius_iris*roi_ratio)), radius_pupille, 255)
+
+	# scored_peaks = peak_detect(values, lag=lag, visualize=True)
+	# print("Scored peaks", scored_peaks)
+
+
+	# for score, peak in scored_peaks[:1]:
+	# 	cv2.circle(img, (centers[peak][1], centers[peak][0]), rad_pupille[0]+(peak*rad_step), 255)
+
+	cv2.imshow("Input", img)
+	cv2.waitKey(1)
+
+
+	##### RESULTS #####
+
+	print("Elapsed", time.time() - t1)
+	print("Iris :", center_iris, radius_iris, "Pupille :", center_pupille, radius_pupille)
+
+
+	# CILS
+
+	"""
+	Hough linear transform on 
+	"""
+
+	
+
+
+#values_diff2 = np.diff(np.array(values).astype(np.int32))
+
+#print(values_diff2)
+
+
 
 
 
