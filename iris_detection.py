@@ -356,6 +356,75 @@ def peak_detect(values, lag=10, threshold=3.5, influence=0.1, visualize=False):
 
 
 
+def normalization(img, center_pupille, radius_pupille, center_iris, radius_iris, shape):
+	"""
+	shape : (r_size, theta_size)
+	"""
+
+	seg_map = np.zeros(shape, dtype=np.uint8)
+
+	#radius_delta = radius_iris - radius_pupille
+
+	theta_range = np.linspace(0, 2*np.pi, shape[1])
+
+	for t in range(shape[1]):
+		theta = theta_range[t]
+
+		ox = center_iris[0] - center_pupille[0]
+		oy = center_iris[1] - center_pupille[1]
+		alpha = ox**2 + oy**2
+		beta = np.cos(np.pi - np.arctan2(oy, ox) - theta)
+
+		r_max = radius_iris + np.sqrt(alpha)
+
+		#print("ox oy alpha beta", ox, oy, alpha, beta)
+
+		r_1 = np.sqrt(alpha)*beta + np.sqrt(-(alpha*(beta**2) - alpha - radius_iris**2))
+		r_2 = np.sqrt(alpha)*beta - np.sqrt(-(alpha*(beta**2) - alpha - radius_iris**2))
+
+		# print("r_1, r_2", r_1, r_2)
+
+		if r_1 > r_2: r_ = r_1
+		else : r_ = r_2
+
+		#print("r_", r_)
+		#print("max r_", r_max)
+
+
+
+		xp = radius_pupille * np.cos(theta) + center_pupille[0]
+		yp = radius_pupille * np.sin(theta) + center_pupille[1]
+		xi = radius_iris * np.cos(theta) + center_iris[0]
+		yi = radius_iris * np.sin(theta) + center_iris[1]
+
+
+		r_range = np.linspace(radius_pupille, r_, shape[0])
+
+		for i in range(shape[0]):
+			r = r_range[i]
+
+			r_ratio = r/r_
+
+			x = r_ratio*(r_*np.cos(theta)) + center_pupille[0]
+			y = r_ratio*(r_*np.sin(theta)) + center_pupille[1]
+
+			# x = (r/r_max)*xi - (1- ((r-radius_pupille)/(r_max-radius_pupille)))*xp
+			# y = (r/r_max)*yi - (1- ((r-radius_pupille)/r_max-radius_pupille))*yp
+
+			# x = ((radius_iris-r) + radius_pupille)*xp + (r + radius_pupille)*xi
+			# y = ((radius_iris-r) + radius_pupille)*yp + (r + radius_pupille)*yi
+
+
+			# x = (radius_delta*(1-r) + radius_pupille)*xp + (radius_delta*r + radius_pupille)*xi
+			# y = (radius_delta*(1-r) + radius_pupille)*yp + (radius_delta*r + radius_pupille)*yi
+
+			#print(r, theta, y, x)
+
+			seg_map[i, t] = img[int(x), int(y)]
+
+	return seg_map
+
+
 
 # MAIN
 
@@ -370,7 +439,7 @@ print("Taille train set :", len(train_set))
 print("Taille test set :", len(test_set))
 
 
-for i in range(200, 300):
+for i in range(0, 100):
 
 
 	img = ROI(train_set[i][1], 3/4)
@@ -388,7 +457,7 @@ for i in range(200, 300):
 
 	t1 = time.time()
 
-	img_edge = weighted_canny(img, ksize=5, wx=0.5, low=30, high=80, visualize=False)
+	img_edge = weighted_canny(img, ksize=5, wx=0.5, low=40, high=80, visualize=False)
 	#img_edge = weighted_canny(img, 5, 0.5, 40, 80, False)
 
 	cv2.imshow("Canny implementation", img_edge)
@@ -440,13 +509,14 @@ for i in range(200, 300):
 	print(values)
 
 	best_index = np.argmax(values)
-	center_pupille = centers[best_index]
-
+	
+	center_pupille = (centers[best_index][0] + center_iris[0] - int(radius_iris*roi_ratio), centers[best_index][1] + center_iris[1] - int(radius_iris*roi_ratio))
 	radius_pupille = rad_pupille[0]+(best_index*rad_step)
 
-	cv2.circle(img, (center_pupille[1]+center_iris[1]-int(radius_iris*roi_ratio), center_pupille[0]+center_iris[0]-int(radius_iris*roi_ratio)), radius_pupille, 255)
+	cv2.circle(img, (center_pupille[1], center_pupille[0]), radius_pupille, 255)
 
-	# scored_peaks = peak_detect(values, lag=lag, visualize=True)
+
+	scored_peaks = peak_detect(values, lag=lag, visualize=False)
 	# print("Scored peaks", scored_peaks)
 
 
@@ -459,15 +529,25 @@ for i in range(200, 300):
 
 	##### RESULTS #####
 
-	print("Elapsed", time.time() - t1)
 	print("Iris :", center_iris, radius_iris, "Pupille :", center_pupille, radius_pupille)
 
 
 	# CILS
 
 	"""
-	Hough linear transform on 
+	Hough linear transform on roi
 	"""
+
+
+	# NORMALIZATION
+
+	seg_map = normalization(img, center_pupille, radius_pupille, center_iris, radius_iris, (80, 360))
+	cv2.imshow("Seg", seg_map)
+
+	print("Elapsed", time.time() - t1)
+	cv2.waitKey(0)
+
+
 
 	
 
