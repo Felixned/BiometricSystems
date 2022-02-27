@@ -2,6 +2,7 @@ import cv2, imutils
 import numpy as np
 import glob
 import os
+import time
 
 
 
@@ -185,14 +186,103 @@ def algo5_low_complexity(img, pupilX, pupilY, pupilDiameter, threshold):
 	return img, pupilX, pupilY, pupilDiameter, threshold
 
 #pas fini, de toute façon ça fonctionne même pas pour la pupille...
+
 def algo6_low_complexity(img, pupilX, pupilY, pupilDiameter):
 	irisL1X=0
 	irisL1Y=0
-	irisL1Diam=0
+	irisL1Diameter=0
 	irisL2X=0
 	irisL2Y=0
-	irisL2Diam=0
-	return
+	irisL2Diameter=0
+	#est-ce vrai ? pas précisé dans le papier... mdr
+	value1,value2,value3,value4,value5,value6 = 0,0,0,0,0,0
+	length = 8
+	for k in range(-1,2):
+		good = True
+		finished = False
+		irisY = pupilY + k
+		x = pupilX - pupilDiameter//2
+		irisDiameter = 0
+		diameter = 0
+		while True:
+			for i in range(0,8):
+				value1 = value1 + img[irisY][x-(length*0)-i]
+				value2 = value2 + img[irisY][x-(length*1)-i]
+				value3 = value3 + img[irisY][x-(length*2)-i]
+				value4 = value4 + img[irisY][x-(length*3)-i]
+				value5 = value5 + img[irisY][x-(length*4)-i]
+				value6 = value6 + img[irisY][x-(length*5)-i]
+			value1 = value1//length
+			value2 = value2//length
+			value3 = value3//length
+			value4 = value4//length
+			value5 = value5//length
+			value6 = value6//length
+			if value1<value4 and value1<value5 and value1<value6 and value2<value4 and value2<value5 and value2<value6 and value3<value4 and value3<value5 and value3<value6:
+				length = i
+				distLeft = ((pupilX-x)+3*length)+ length//2
+				finished = True
+			x = x-1
+			if finished == True or (x-48)<0:
+				break
+		finished = False
+		x = pupilX + pupilDiameter//2
+		while True:
+			for i in range(0,length):
+				value1 = value1 + img[irisY][x+(length*0)+i]
+				value2 = value2 + img[irisY][x+(length*1)+i]
+				value3 = value3 + img[irisY][x+(length*2)+i]
+				value4 = value4 + img[irisY][x+(length*3)+i]
+				value5 = value5 + img[irisY][x+(length*4)+i]
+				value6 = value6 + img[irisY][x+(length*5)+i]
+			value1 = value1//length
+			value2 = value2//length
+			value3 = value3//length
+			value4 = value4//length
+			value5 = value5//length
+			value6 = value6//length
+			if value1<value4 and value1<value5 and value1<value6 and value2<value4 and value2<value5 and value2<value6 and value3<value4 and value3<value5 and value3<value6:
+				distRight = ((x-pupilX)+3*length)+length//2
+				finished = True
+			x = x+1
+			if finished == True or (x+48)>=image_width:
+				break
+		print(distLeft)
+		print(distRight)
+		if distLeft==0 and distRight>0 :
+			distLeft = distRight
+			good = False
+		if distRight==0 and distLeft>0:
+			distRight = distLeft
+			good = False
+		if 	distLeft>distRight and distLeft-distRight>18 :
+			distRight=distLeft
+			good = False
+		if distRight>distLeft and distRight-distLeft>18:
+			good = False
+			distLeft=distRight
+		if distLeft>distRight:
+			irisX = pupilX-((distLeft-distRight)//2)
+		else :
+			irisX = pupilX+((distRight-distLeft)//2)
+		irisDiameter = distLeft + distRight
+		if good==True and (irisDiameter > irisL1Diameter):
+			irisL1X = irisX
+			irisL1Y = irisY
+			irisL1Diameter = irisDiameter
+		if good==False and (irisDiameter > irisL2Diameter):
+			irisL2X = irisX
+			irisL2Y = irisY
+			irisL2Diameter = irisDiameter
+	print(irisDiameter)
+	if irisL1Diameter>0:
+		return irisL1X, irisL1Y, irisL1Diameter
+	elif irisL2Diameter>0:
+		return irisL2X, irisL2Y, irisL2Diameter
+	else:
+		time.sleep(1)
+		return None
+
 
 def low_complexity(img, visualize = False):
 
@@ -201,7 +291,7 @@ def low_complexity(img, visualize = False):
 
 
 	#FIRST ALGO
-	#print(algo1_low_complexity(img))
+	#print(algo1_low_complexity(blurred_img))
 	result_algo1 = algo1_low_complexity(blurred_img)
 	pupilX = result_algo1[1]
 	pupilY = result_algo1[2]
@@ -217,11 +307,10 @@ def low_complexity(img, visualize = False):
 
 	img_algo1 = blurred_img.copy()
 	img_algo1 = cv2.circle (img_algo1, (pupilX, pupilY), pupilDiameter//2, (255,255,255), 1)
-	cv2.imshow("img_algo1",img_algo1)
 
 	#SECOND ALGO
-	#print(algo2_low_complexity(img, pupilX, pupilY, pupilDiameter, threshold))
-	result_algo2 = algo2_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter//2, threshold)
+	#print(algo2_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter, threshold))
+	result_algo2 = algo2_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter, threshold)
 	pupilX = result_algo2[1]
 	pupilY = result_algo2[2]
 	pupilDiameter = result_algo2[3]
@@ -235,11 +324,11 @@ def low_complexity(img, visualize = False):
 	"""
 
 	img_algo2 = blurred_img.copy()
-	img_algo2 = cv2.circle (img_algo2, (pupilX, pupilY), pupilDiameter//2, (255,255,0), 1)
+	img_algo2 = cv2.circle (img_algo2, (pupilX, pupilY), pupilDiameter, (255,255,0), 1)
 
 	#THIRD ALGO
-	#print(algo3_low_complexity(img, pupilX, pupilY, pupilDiameter, threshold))
-	result_algo3 = algo3_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter//2, threshold)
+	#print(algo3_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter, threshold))
+	result_algo3 = algo3_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter, threshold)
 	pupilX = result_algo3[1]
 	pupilY = result_algo3[2]
 	pupilDiameter = result_algo3[3]
@@ -249,8 +338,8 @@ def low_complexity(img, visualize = False):
 	img_algo3 = cv2.circle (img_algo3, (pupilX, pupilY), pupilDiameter//2, (255,255,0), 1)
 
 	#FOURTH ALGO
-	#print(algo4_low_complexity(img, pupilX, pupilY, pupilDiameter, threshold))
-	result_algo4 = algo4_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter//2, threshold)
+	#print(algo4_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter, threshold))
+	result_algo4 = algo4_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter, threshold)
 	pupilX = result_algo4[1]
 	pupilY = result_algo4[2]
 	pupilDiameter = result_algo4[3]
@@ -261,8 +350,8 @@ def low_complexity(img, visualize = False):
 
 
 	#FIFTH ALGO
-	#print(algo5_low_complexity(img, pupilX, pupilY, pupilDiameter, threshold))
-	result_algo5 = algo5_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter//2, threshold)
+	#print(algo5_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter, threshold))
+	result_algo5 = algo5_low_complexity(blurred_img, pupilX, pupilY, pupilDiameter, threshold)
 	pupilX = result_algo5[1]
 	pupilY = result_algo5[2]
 	pupilDiameter = result_algo5[3]
@@ -270,8 +359,18 @@ def low_complexity(img, visualize = False):
 
 	img_algo5 = blurred_img.copy()
 	img_algo5 = cv2.circle (img_algo5, (pupilX, pupilY), pupilDiameter//2, (255,255,0), 1)
+	cv2.imshow("result pupil detection",img_algo5)
 
 	#sixth algo
+	
+	result_algo6 = algo6_low_complexity(img, pupilX, pupilY, pupilDiameter//2)
+	if algo6_low_complexity(img, pupilX, pupilY, pupilDiameter//2) != None:
+		irisX = result_algo6[0]
+		irisY = result_algo6[1]
+		irisDiameter = result_algo6[2]
+	img_algo6 = img_algo5.copy()
+	img_algo6 = cv2.circle (img_algo5, (pupilX, pupilY), irisDiameter//2, (255,255,0), 1)
+	cv2.imshow("result iris detection",img_algo6)
 
 	if visualize:
 		cv2.imshow("img", img)
@@ -302,7 +401,7 @@ img = train_set[0][1]
 
 # IRIS DETECTION
 
-pupil_edge = low_complexity(img, True)
+pupil_edge = low_complexity(img, False)
 
 
 cv2.waitKey(0)
