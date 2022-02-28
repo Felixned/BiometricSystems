@@ -424,6 +424,24 @@ def normalization(img, center_pupille, radius_pupille, center_iris, radius_iris,
 
 	return seg_map
 
+def remove_eyelashes(img):
+	shape = img.shape
+	for i in range(0,shape[0]):
+		for j in range(0, shape[1]):
+			if img[i][j] < 40:
+				img[i][j]=0
+	cv2.imshow("img removed_eyelashes",img)
+
+def remove_light_reflections(img):
+	shape = img.shape
+	for i in range(0,shape[0]):
+		for j in range(0, shape[1]):
+			if img[i][j] > 180:
+				img[i][j]=0
+	cv2.imshow("img removed_eyelashes",img)
+
+def remove_eyelids(img):
+	return None
 
 
 # MAIN
@@ -535,10 +553,9 @@ for i in range(0, 100):
 	# CILS
 
 	"""
-	Hough linear transform on roi
+	Hough linear transform on roi:
 	"""
-
-
+	
 	# NORMALIZATION
 
 	seg_map = normalization(img, center_pupille, radius_pupille, center_iris, radius_iris, (80, 360))
