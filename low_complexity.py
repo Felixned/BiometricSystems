@@ -395,7 +395,7 @@ print("Taille train set :", len(train_set))
 print("Taille test set :", len(test_set))
 
 
-img = train_set[0][1]
+img = train_set[4][1]
 #cv2.imshow(train_set[0][0], img)
 
 

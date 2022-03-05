@@ -8,6 +8,10 @@ import matplotlib.pyplot as plt
 import cProfile
 
 from smoothed_zscore_algo import *
+from scipy.spatial.distance import hamming
+from itertools import combinations
+
+import pickle
 
 
 # DATA IMPORT
@@ -24,14 +28,14 @@ def import_db(db_path, nb_pers, train_split):
 	for p in range(1, nb_pers+1):
 		# Left
 		path = db_path + "/" + str(p) + "/" + path_left + "*.bmp"
-		img_left = [(os.path.basename(file), cv2.imread(file, cv2.IMREAD_GRAYSCALE)) for file in glob.glob(path)]
+		img_left = [(file, cv2.imread(file, cv2.IMREAD_GRAYSCALE)) for file in glob.glob(path)]
 
 		train_set += img_left[:train_split]
 		test_set += img_left[train_split:]
 
 		# Right
 		path = db_path + "/" + str(p) + "/" + path_right + "*.bmp"
-		img_right = [(os.path.basename(file), cv2.imread(file, cv2.IMREAD_GRAYSCALE)) for file in glob.glob(path)]
+		img_right = [(file, cv2.imread(file, cv2.IMREAD_GRAYSCALE)) for file in glob.glob(path)]
 
 		train_set += img_right[:train_split]
 		test_set += img_right[train_split:]
@@ -206,6 +210,7 @@ def weighted_canny(img, ksize, wx, low, high, visualize = True):
 
 
 def test_bound(shape, y, x):
+	# UNUSED
 	if y < 0 or y > shape[0] :
 		return False
 
@@ -218,7 +223,7 @@ def test_bound(shape, y, x):
 
 
 def hough_circle(edge, accumulator, y, x, rad):
-
+	# UNUSED
 	list_deg = np.linspace(0, 360, int(2*np.pi*rad))
 	list_y = np.clip(np.int32(np.round(np.sin(list_deg) * rad)) + y, 0, edge.shape[0]-1)
 	list_x = np.clip(np.int32(np.round(np.cos(list_deg) * rad)) + x, 0, edge.shape[1]-1)
@@ -227,19 +232,121 @@ def hough_circle(edge, accumulator, y, x, rad):
 
 
 def hough_circle_cv(edge, accumulator, y, x, rad, color):
+	# UNUSED
 	cv2.circle(accumulator, (y, x), rad, color, 1)
 	
 
 
-def hough_transform(edge, rad_min=10, rad_max=200, rad_step=3, px_step=2, ratio=4/4):
+def hough_transform_linear(edge, rho_num=0, theta_num = 360, px_step=2, ratio=4/4, visualize=False):
 
 	edge_roi = ROI(edge, ratio)
 	cv2.imshow("ROI", edge_roi)
 
+	max_dist = np.sqrt(edge_roi.shape[0]**2 + edge_roi.shape[1]**2)
+	if rho_num == 0:
+		rho_num = int(max_dist)
+
+	rho_res = max_dist/rho_num
+	theta_res = 2*np.pi/theta_num
+
+	accumulator = np.zeros((rho_num*2, theta_num), dtype=np.uint8) # positive & negative rho
+
+	nz_edges = np.nonzero(edge_roi)
+
+
+	theta_index_list = np.arange(0, theta_num)
+	theta_list = theta_index_list * theta_res
+
+	#rho_index_list = np.arange(0, rho_num)
+
+	
+	for i in range(0, len(nz_edges[0]), px_step):
+
+		y = nz_edges[0][i]
+		x = nz_edges[1][i]
+
+		rho_list = (x*np.cos(theta_list) + y*np.sin(theta_list))/rho_res
+		rho_index_list = rho_list.astype(int) + rho_num
+
+		accumulator[rho_index_list, theta_index_list] += 1
+
+
+	if visualize:
+		cv2.imshow("Accumulator", accumulator[:rho_num, :]/np.max(accumulator[:rho_num, :]).astype(np.uint8))
+
+	return accumulator[rho_num:, :], rho_res, theta_res
+
+
+def houghline2line(rho_theta_list, img_shape):
+
+	rho_list = rho_theta_list[:, 0]
+	theta_list = rho_theta_list[:, 1]
+
+	a = np.cos(theta_list)/np.sin(theta_list)
+	b = rho_list/np.sin(theta_list)
+
+
+
+	pt1_x = rho_list*np.cos(theta_list) + rho_list*np.sin(theta_list)*np.tan(theta_list)
+	pt2_y = rho_list/np.sin(theta_list)
+
+	print(a, b)
+
+
+
+def hough_best_lines(accumulator, rho_res, theta_res, edge_shape, threshold=0.8):
+
+	max_value = np.max(accumulator)
+
+	best_centers_xy = np.argwhere(accumulator > max_value*threshold)
+	best_values = accumulator[best_centers_xy[:, 0], best_centers_xy[:, 1]] #accumulator[best_centers_xy]
+
+	for bc in best_centers_xy:
+		cv2.circle(accumulator, (bc[1], bc[0]), 3, 255)
+		print(bc, accumulator[bc[0], bc[1]])
+
+	print(best_values)
+
+	cv2.imshow("Accumulator", accumulator/max_value)
+
+
+
+	# a = math.cos(best_centers_xy[:, 1])
+	# b = math.sin(best_centers_xy[:, 1])
+	# x0 = a * best_centers_xy[:, 0]
+	# y0 = b * best_centers_xy[:, 0]
+	# pt1 = (x0 + 1000*(-b)), int(y0 + 1000*(a))
+	# pt2 = (int(x0 - 1000*(-b)), int(y0 - 1000*(a)))
+	# cv.line(cdst, pt1, pt2, (0,0,255), 3, cv.LINE_AA)
+
+
+
+
+	best_rho_theta = best_centers_xy.copy().astype(float)
+	best_rho_theta[:, 0] *= rho_res
+	best_rho_theta[:, 1] *= theta_res
+
+	lines = houghline2line(best_rho_theta, accumulator.shape)
+
+
+
+	# center_xy = np.unravel_index(np.argmax(accumulator, axis=None), accumulator.shape)
+	# center_value = accumulator[center_xy[0], center_xy[1]]
+
+	#print(best_centers_xy, best_values)
+
+
+
+
+def hough_transform_circle(edge, rad_min=10, rad_max=200, rad_step=3, px_step=2, ratio=4/4):
+
+	edge_roi = ROI(edge, ratio)
+	# cv2.imshow("ROI", edge_roi)
+
 	nb_rad = 1+((rad_max - rad_min)//rad_step)
 
 	accumulator = np.zeros((nb_rad, edge_roi.shape[0]+(2*rad_max), edge_roi.shape[1]+(2*rad_max)), dtype=np.uint32)
-	temp = np.zeros(edge_roi.shape, dtype=np.uint8)
+	#temp = np.zeros(edge_roi.shape, dtype=np.uint8)
 
 
 	nz_edges = np.nonzero(edge_roi)
@@ -270,13 +377,10 @@ def hough_transform(edge, rad_min=10, rad_max=200, rad_step=3, px_step=2, ratio=
 
 
 	#print(accumulator)
-
-
 	#cv2.imshow("accumulator", accumulator/np.max(accumulator))
 	#max_acc_center = np.argmax(accumulator)
 
 	accumulator_roi = accumulator[:, rad_max:rad_max+edge_roi.shape[0], rad_max:rad_max+edge_roi.shape[1]]
-
 
 	return accumulator_roi
 
@@ -314,8 +418,8 @@ def hough_best_circles(accumulator, region, peak_ratio=2.5):
 
 		cv2.circle(img_rad, (center_xy[1], center_xy[0]), 3, 255)
 
-		cv2.imshow("Hough", img_rad)
-		cv2.waitKey(1)
+		# cv2.imshow("Hough", img_rad)
+		# cv2.waitKey(1)
 
 
 	return plot_values, plot_pnsr, centers
@@ -323,6 +427,8 @@ def hough_best_circles(accumulator, region, peak_ratio=2.5):
 
 
 def peak_detect(values, lag=10, threshold=3.5, influence=0.1, visualize=False):
+	# UNUSED
+
 	results = thresholding_algo(values, lag=lag, threshold=threshold, influence=influence)
 
 	peaks = results["signals"]
@@ -361,7 +467,7 @@ def normalization(img, center_pupille, radius_pupille, center_iris, radius_iris,
 	shape : (r_size, theta_size)
 	"""
 
-	seg_map = np.zeros(shape, dtype=np.uint8)
+	seg_map = np.zeros(shape, dtype=np.uint8) # output img
 
 	#radius_delta = radius_iris - radius_pupille
 
@@ -372,18 +478,20 @@ def normalization(img, center_pupille, radius_pupille, center_iris, radius_iris,
 
 		ox = center_iris[0] - center_pupille[0]
 		oy = center_iris[1] - center_pupille[1]
-		alpha = ox**2 + oy**2
-		beta = np.cos(np.pi - np.arctan2(oy, ox) - theta)
+		alpha = ox**2 + oy**2 # distance²
+		beta = np.cos(np.pi - np.arctan2(oy, ox) - theta) # angle
 
-		r_max = radius_iris + np.sqrt(alpha)
+		#r_max = radius_iris + np.sqrt(alpha)
 
 		#print("ox oy alpha beta", ox, oy, alpha, beta)
 
+		# 2 solutions to equation
 		r_1 = np.sqrt(alpha)*beta + np.sqrt(-(alpha*(beta**2) - alpha - radius_iris**2))
 		r_2 = np.sqrt(alpha)*beta - np.sqrt(-(alpha*(beta**2) - alpha - radius_iris**2))
 
 		# print("r_1, r_2", r_1, r_2)
 
+		# Positive (maximum solution)
 		if r_1 > r_2: r_ = r_1
 		else : r_ = r_2
 
@@ -391,11 +499,11 @@ def normalization(img, center_pupille, radius_pupille, center_iris, radius_iris,
 		#print("max r_", r_max)
 
 
-
-		xp = radius_pupille * np.cos(theta) + center_pupille[0]
-		yp = radius_pupille * np.sin(theta) + center_pupille[1]
-		xi = radius_iris * np.cos(theta) + center_iris[0]
-		yi = radius_iris * np.sin(theta) + center_iris[1]
+		# Radius positions at theta
+		# xp = radius_pupille * np.cos(theta) + center_pupille[0]
+		# yp = radius_pupille * np.sin(theta) + center_pupille[1]
+		# xi = radius_iris * np.cos(theta) + center_iris[0]
+		# yi = radius_iris * np.sin(theta) + center_iris[1]
 
 
 		r_range = np.linspace(radius_pupille, r_, shape[0])
@@ -405,6 +513,7 @@ def normalization(img, center_pupille, radius_pupille, center_iris, radius_iris,
 
 			r_ratio = r/r_
 
+			# Projection on x/y axis, center pupille origin
 			x = r_ratio*(r_*np.cos(theta)) + center_pupille[0]
 			y = r_ratio*(r_*np.sin(theta)) + center_pupille[1]
 
@@ -426,6 +535,200 @@ def normalization(img, center_pupille, radius_pupille, center_iris, radius_iris,
 
 
 
+
+def G(f, f0, sigma):
+	return np.exp(-(np.log(f/f0)**2) / (2*(np.log(sigma/f0))**2))
+
+
+def feature_extraction(seg_map, filter, visualize=False):
+
+	if seg_map == []:
+		return []
+
+	features = np.zeros((seg_map.size//2, 2), dtype=bool)
+
+	for r in range(seg_map.shape[0]):
+
+		signal = seg_map[r]
+
+		x = np.arange(signal.shape[0])
+		f = x[:signal.shape[0]]/signal.shape[0] # half frequency only
+		signal_fft = np.fft.fft(signal) #[:len(f)] # half values only
+
+		signal_filtered = signal_fft*filter(f)
+		signal_filtered_ifft_real = np.fft.ifft(signal_filtered.real)[:len(f)//2]
+		signal_filtered_ifft_imag = np.fft.ifft(signal_filtered.imag)[:len(f)//2]
+
+
+		if visualize:
+			#print(filter(f))
+			#print(signal_filtered)
+			gabor_ifft = np.fft.ifft(filter(f))
+			plt.plot(f, filter(f))
+			plt.show()
+			plt.plot(f, signal_fft.real)
+			plt.show()
+			plt.plot(f, signal_filtered.real)
+			plt.show()
+			plt.plot(x[:signal.shape[0]//2], signal_filtered_ifft_imag)
+			plt.show()
+
+
+		features[signal_filtered_ifft_real.shape[0]*r:signal_filtered_ifft_real.shape[0]*(r+1), 0] = signal_filtered_ifft_real >= 0.0
+		features[signal_filtered_ifft_real.shape[0]*r:signal_filtered_ifft_real.shape[0]*(r+1), 1] = signal_filtered_ifft_imag >= 0.0
+
+
+	return features
+
+
+
+def seg_eye(img_edge, rad_step, rad_iris=(35, 70), roi_ratio=0.8):
+
+	"""
+	Detect iris in rad_iris
+	Detect pupille in iris roi
+	"""
+
+	# IRIS
+
+	img_hough_iris = hough_transform_circle(img_edge, rad_min=rad_iris[0], rad_max=rad_iris[1], rad_step=rad_step, px_step=2, ratio=4/4)
+	values, psnr, centers = hough_best_circles(img_hough_iris, 20, 4)
+	# scored_peaks = peak_detect(values, lag=lag, visualize=True)
+	# print("Scored peaks", scored_peaks)
+
+	best_index = np.argmax(values)
+	center_iris = centers[best_index]
+	radius_iris = rad_iris[0]+(best_index*rad_step)
+
+
+	# PUPILLE
+
+	rad_pupille = (10, int(radius_iris*0.8))
+	iris_edge_roi = img_edge[center_iris[0]-int(radius_iris*roi_ratio):center_iris[0]+int(radius_iris*roi_ratio), center_iris[1]-int(radius_iris*roi_ratio):center_iris[1]+int(radius_iris*roi_ratio)]
+
+	img_hough_pupille = hough_transform_circle(iris_edge_roi, rad_min=rad_pupille[0], rad_max=rad_pupille[1], rad_step=rad_step, px_step=2, ratio=4/4)
+	#cv2.waitKey(0)
+
+	values, psnr, centers = hough_best_circles(img_hough_pupille, 20, 4)
+	#print(values)
+
+	best_index = np.argmax(values)
+	center_pupille = (centers[best_index][0] + center_iris[0] - int(radius_iris*roi_ratio), centers[best_index][1] + center_iris[1] - int(radius_iris*roi_ratio))
+	radius_pupille = rad_pupille[0]+(best_index*rad_step)
+
+
+
+	#scored_peaks = peak_detect(values, lag=lag, visualize=False)
+	# print("Scored peaks", scored_peaks)
+
+
+	# for score, peak in scored_peaks[:1]:
+	# 	cv2.circle(img, (centers[peak][1], centers[peak][0]), rad_pupille[0]+(peak*rad_step), 255)
+
+
+	return center_pupille, radius_pupille, center_iris, radius_iris
+
+
+
+def get_normalisation_eye(input_img, roi=3/4, rad_step=1, seg_shape=(20, 256), visualize=True):
+
+	print("Beginning eye processing...")
+
+	t1 = time.time()
+
+	img = ROI(input_img, roi)
+	if visualize:
+		cv2.imshow("Input", img)
+
+	# IRIS DETECTION
+	#lag = 10
+
+	print("Acquiring edges...")
+	img_edge = weighted_canny(img, ksize=5, wx=0.5, low=40, high=80, visualize=False)
+	if visualize:
+		cv2.imshow("Canny implementation", img_edge)
+
+	print("Segmentation...")
+	center_pupille, radius_pupille, center_iris, radius_iris = seg_eye(img_edge, rad_step)
+	print("Iris :", center_iris, radius_iris, "Pupille :", center_pupille, radius_pupille)
+
+	if visualize:
+		#cv2.circle(img, (center_iris[1], center_iris[0]), radius_iris, 255)
+		#cv2.circle(img, (center_pupille[1], center_pupille[0]), radius_pupille, 255)
+		cv2.imshow("Input", img)
+		cv2.waitKey(1)
+
+
+	# EYELIDS
+	"""
+	Hough linear transform on iris_edge_roi
+	"""
+
+	# accu_lin, rho_res, theta_res = hough_transform_linear(img_edge, px_step=1, visualize=True)
+	# hough_best_lines(accu_lin, rho_res, theta_res, img_edge.shape)
+	# cv2.waitKey(0)
+
+
+	# NORMALIZATION
+	print("Normalization...")
+	seg_map = normalization(img, center_pupille, radius_pupille, center_iris, radius_iris, seg_shape)
+	if visualize:
+		cv2.imshow("Seg", seg_map)
+		cv2.waitKey(1)
+
+	print("Elapsed", time.time() - t1, "\n")
+
+	return seg_map
+
+
+
+def get_features_eye(seg_map, lambda0=18, sigma_ratio=0.5):
+	# Filter design
+
+	# if seg_map != []:
+	# 	f0 = lambda0/seg_map.shape[0]
+	# else :
+	# 	f0 = 0
+
+	f0 = lambda0
+
+	sigma = sigma_ratio*f0
+	filter = lambda f: G(f, f0, sigma)
+
+	#print("Feature extraction...")
+	features = feature_extraction(seg_map, filter)
+	features_line = np.ravel(features)
+
+	#print("Nb features:", features_line.size)
+
+	#print(features_line)
+
+
+	return features_line
+
+
+
+def feature_matching(features1, features2, shifts=3, size_shift=2):
+	# return minium distance for all shifts
+
+	if features1.size == 0 or features2.size == 0:
+		return None
+
+	dist_list = []
+
+	for i in range(-shifts, shifts+1):
+		dist_list.append(hamming(features1, np.roll(features2, size_shift*i)))
+
+	#print(dist_list)
+
+	return min(dist_list)
+
+
+
+def decidability(mean1, mean2, std1, std2):
+	return np.abs(mean2 - mean1) / np.sqrt((std2**2 + std1**2)/2)
+
+
 # MAIN
 
 db_path = "MMU-Iris-Database/"
@@ -438,114 +741,159 @@ train_set, test_set = import_db(db_path, nb_pers, train_split)
 print("Taille train set :", len(train_set))
 print("Taille test set :", len(test_set))
 
+# NORMALISATION SAVE
 
-for i in range(0, 100):
+# for i in range(len(train_set)):
+
+# 	input_img_name = train_set[i][0].split(".")[0]
+# 	print(input_img_name)
+# 	store_name = input_img_name + "_seg.pck"
+
+# 	input_img = train_set[i][1]
+
+# 	try:
+# 		seg_map = get_normalisation_eye(input_img, visualize=True)
+# 	except Exception:
+# 		seg_map = []
+
+# 	f = open(store_name, 'wb')
+# 	pickle.dump(seg_map, f)
+# 	f.close()
 
 
-	img = ROI(train_set[i][1], 3/4)
+# NORMALISATION IMPORT
 
-	cv2.imshow("Input", img)
+train_norm_set = []
+
+for i in range(len(train_set)):
+
+	input_img_name = train_set[i][0].split(".")[0]
+	store_name = input_img_name + "_seg.pck"
+
+	try:
+		f = open(store_name, 'rb')
+		seg_map = pickle.load(f)
+		f.close()
+
+	except Exception:
+		print("File not found", store_name)
 
 
-	# IRIS DETECTION
+	train_norm_set.append([train_set[i][0], seg_map])
+
+#print(train_norm_set)
+
+
+decidability_plot = []
+#range_plot = range(50, 100, 3) # lambda0
+#range_plot = np.arange(0.1, 0.9, 0.1) #sigma
+
+
+#for x in range_plot:
+
+# GET FEATURES
+
+print("Getting features")
+features_set = []
+
+for norm in train_norm_set:
+	name, seg_map = norm
+
+	features = get_features_eye(seg_map, 1/42, 0.4)
+
+	features_set.append([name, features])
+
+
+print("Matching...")
+
+# PROCESS
+
+matching_list_intra = []
+matching_list_inter = []
+
+for i, j in combinations(range(len(train_norm_set)), 2):
+
+		features1 = features_set[i][1]
+		features2 = features_set[j][1]
+
+		hamming_score = feature_matching(features1, features2)
+
+		if hamming_score != None:
+			if j < ((i//4)+1)*4: # intra class
+				matching_list_intra.append(hamming_score)
+			else :
+				matching_list_inter.append(hamming_score)
+
+
+	#print(i)
+
+print("[INTRA] Mean", np.mean(matching_list_intra), "Std", np.std(matching_list_intra))
+print("[INTER] Mean", np.mean(matching_list_inter), "Std", np.std(matching_list_inter))
+
+deci =  decidability(np.mean(matching_list_intra), np.mean(matching_list_inter), np.std(matching_list_intra), np.std(matching_list_inter))
+print("Decidability =", deci)
+
+
+separation_point = 0.36
+far = len(np.where(np.array(matching_list_inter) <= separation_point))/len(matching_list_inter)
+frr = len(np.where(np.array(matching_list_intra) >= separation_point))/len(matching_list_intra)
+
+print("FAR =", far, "FRR =", frr)
+
+
+#decidability_plot.append(deci)
+
+
+#plt.scatter(list(range_plot), decidability_plot)
+#plt.show()
+
+plt.hist(matching_list_inter, bins=100, density=True)
+plt.hist(matching_list_intra, bins=100, density=True)
+
+
+plt.show()
+
+
+
+
+
+# TEST INPUT
+
+# input_img = test_set[44][1]
+# seg_map = get_normalisation_eye(input_img, visualize=True)
+# features_base = get_features_eye(seg_map)
+
+
+# TEST SCAN ALL TRAIN_SET
+# for i in range(len(train_norm_set)):
+
+# 	seg_map = train_norm_set[i][1]
+# 	features = get_features_eye(seg_map)
+
+# 	hamming_score = feature_matching(features_base, features)
+
+# 	print("Matching:", hamming_score, "\n")
+# 	matching_list.append(hamming_score)
+
+
+# plt.scatter(list(range(len(matching_list))), matching_list)
+# plt.show()
+
+# print(np.argwhere(np.array(matching_list) < 0.46))
+
+
+
+
+# TEST HAMMING
+
+# input_img = train_set[0][1]
+# features1 = get_features_eye(input_img, visualize=True)
+
+# input_img = train_set[6][1]
+# features2 = get_features_eye(input_img, visualize=True)
+
+# print("Matching:", feature_matching(features1, features2))
 	
-	rad_step = 1
-	lag = 10
-
-
-	#detect_iris(img)
-
-	t1 = time.time()
-
-	img_edge = weighted_canny(img, ksize=5, wx=0.5, low=40, high=80, visualize=False)
-	#img_edge = weighted_canny(img, 5, 0.5, 40, 80, False)
-
-	cv2.imshow("Canny implementation", img_edge)
-
-
-	"""
-	Detect iris in rad_iris
-	Detect pupille in iris roi
-	"""
-
-	# IRIS
-
-	rad_iris = (35, 70)
-
-	img_hough_iris = hough_transform(img_edge, rad_min=rad_iris[0], rad_max=rad_iris[1], rad_step=rad_step, px_step=2, ratio=4/4)
-	values, psnr, centers = hough_best_circles(img_hough_iris, 20, 4)
-	# scored_peaks = peak_detect(values, lag=lag, visualize=True)
-	# print("Scored peaks", scored_peaks)
-
-	best_index = np.argmax(values)
-	center_iris = centers[best_index]
-
-	radius_iris = rad_iris[0]+(best_index*rad_step)
-
-	cv2.circle(img, (center_iris[1], center_iris[0]), radius_iris, 255)
-
-	# for score, peak in scored_peaks[:1]:
-	# 	cv2.circle(img, (centers[peak][1], centers[peak][0]), rad_iris[0]+(peak*rad_step), 255)
-
-
-	cv2.imshow("Input", img)
-	cv2.waitKey(1)
-
-
-
-
-	# PUPILLE
-
-	roi_ratio = 0.8
-
-	rad_pupille = (10, int(radius_iris*0.8))
-
-	iris_edge_roi = img_edge[center_iris[0]-int(radius_iris*roi_ratio):center_iris[0]+int(radius_iris*roi_ratio), center_iris[1]-int(radius_iris*roi_ratio):center_iris[1]+int(radius_iris*roi_ratio)]
-
-	img_hough_pupille = hough_transform(iris_edge_roi, rad_min=rad_pupille[0], rad_max=rad_pupille[1], rad_step=rad_step, px_step=2, ratio=4/4)
-	#cv2.waitKey(0)
-
-	values, psnr, centers = hough_best_circles(img_hough_pupille, 20, 4)
-	print(values)
-
-	best_index = np.argmax(values)
-	
-	center_pupille = (centers[best_index][0] + center_iris[0] - int(radius_iris*roi_ratio), centers[best_index][1] + center_iris[1] - int(radius_iris*roi_ratio))
-	radius_pupille = rad_pupille[0]+(best_index*rad_step)
-
-	cv2.circle(img, (center_pupille[1], center_pupille[0]), radius_pupille, 255)
-
-
-	scored_peaks = peak_detect(values, lag=lag, visualize=False)
-	# print("Scored peaks", scored_peaks)
-
-
-	# for score, peak in scored_peaks[:1]:
-	# 	cv2.circle(img, (centers[peak][1], centers[peak][0]), rad_pupille[0]+(peak*rad_step), 255)
-
-	cv2.imshow("Input", img)
-	cv2.waitKey(1)
-
-
-	##### RESULTS #####
-
-	print("Iris :", center_iris, radius_iris, "Pupille :", center_pupille, radius_pupille)
-
-
-	# CILS
-
-	"""
-	Hough linear transform on roi
-	"""
-
-
-	# NORMALIZATION
-
-	seg_map = normalization(img, center_pupille, radius_pupille, center_iris, radius_iris, (80, 360))
-	cv2.imshow("Seg", seg_map)
-
-	print("Elapsed", time.time() - t1)
-	cv2.waitKey(0)
 
 
 
