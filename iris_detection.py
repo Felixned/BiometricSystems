@@ -533,6 +533,24 @@ def normalization(img, center_pupille, radius_pupille, center_iris, radius_iris,
 
 	return seg_map
 
+def remove_eyelashes(img):
+	shape = img.shape
+	for i in range(0,shape[0]):
+		for j in range(0, shape[1]):
+			if img[i][j] < 40:
+				img[i][j]=0
+	cv2.imshow("img removed_eyelashes",img)
+
+def remove_light_reflections(img):
+	shape = img.shape
+	for i in range(0,shape[0]):
+		for j in range(0, shape[1]):
+			if img[i][j] > 180:
+				img[i][j]=0
+	cv2.imshow("img removed_eyelashes",img)
+
+def remove_eyelids(img):
+	return None
 
 
 
@@ -669,6 +687,7 @@ def get_normalisation_eye(input_img, roi=3/4, rad_step=1, seg_shape=(20, 256), v
 	# cv2.waitKey(0)
 
 
+	
 	# NORMALIZATION
 	print("Normalization...")
 	seg_map = normalization(img, center_pupille, radius_pupille, center_iris, radius_iris, seg_shape)
