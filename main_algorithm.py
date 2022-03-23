@@ -1,7 +1,8 @@
-import segmentation.py as segmentation
-import normalisation.py as normalisation
-import feature_extraction_and_encoding as ft_ext_and_enc
-
+from segmentation import *
+from normalisation import *
+from feature_extraction_and_encoding import *
+from smoothed_zscore_algo import *
+from low_complexity import *
 
 # MAIN
 
