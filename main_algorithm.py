@@ -3,6 +3,17 @@ from normalisation import *
 from feature_extraction_and_encoding import *
 from smoothed_zscore_algo import *
 
+import cv2, imutils
+import numpy as np
+import glob
+import os, time
+from scipy.spatial.distance import hamming
+from itertools import combinations
+import matplotlib.pyplot as plt
+
+import cProfile
+import pickle
+
 
 # DATA IMPORT
 

@@ -1,3 +1,53 @@
+import numpy as np
+from scipy.spatial.distance import hamming
+
+
+def G(f, f0, sigma):
+	return np.exp(-(np.log(f/f0)**2) / (2*(np.log(sigma/f0))**2))
+
+
+def feature_extraction(seg_map, filter, visualize=False):
+
+	if seg_map == []:
+		return []
+
+	features = np.zeros((seg_map.size//2, 2), dtype=bool)
+
+	for r in range(seg_map.shape[0]):
+
+		signal = seg_map[r]
+
+		x = np.arange(signal.shape[0])
+		f = x[:signal.shape[0]]/signal.shape[0] # half frequency only
+		signal_fft = np.fft.fft(signal) #[:len(f)] # half values only
+
+		signal_filtered = signal_fft*filter(f)
+		signal_filtered_ifft_real = np.fft.ifft(signal_filtered.real)[:len(f)//2]
+		signal_filtered_ifft_imag = np.fft.ifft(signal_filtered.imag)[:len(f)//2]
+
+
+		if visualize:
+			#print(filter(f))
+			#print(signal_filtered)
+			gabor_ifft = np.fft.ifft(filter(f))
+			plt.plot(f, filter(f))
+			plt.show()
+			plt.plot(f, signal_fft.real)
+			plt.show()
+			plt.plot(f, signal_filtered.real)
+			plt.show()
+			plt.plot(x[:signal.shape[0]//2], signal_filtered_ifft_imag)
+			plt.show()
+
+
+		features[signal_filtered_ifft_real.shape[0]*r:signal_filtered_ifft_real.shape[0]*(r+1), 0] = signal_filtered_ifft_real >= 0.0
+		features[signal_filtered_ifft_real.shape[0]*r:signal_filtered_ifft_real.shape[0]*(r+1), 1] = signal_filtered_ifft_imag >= 0.0
+
+
+	return features
+
+
+
 def get_features_eye(seg_map, lambda0=18, sigma_ratio=0.5):
 	# Filter design
 
@@ -85,7 +135,7 @@ def gen_inter_intra(features_set, visualize=True):
 		plt.show()
 
 	return deci
-	 
+
 
 def gen_decidability_plot():
 
