@@ -1,4 +1,7 @@
-import iris_detection.py 
+import segmentation.py as segmentation
+import normalisation.py as normalisation
+import feature_extraction_and_encoding as ft_ext_and_enc
+
 
 # MAIN
 
