@@ -671,9 +671,10 @@ def get_normalisation_eye(input_img, roi=3/4, rad_step=1, seg_shape=(20, 256), v
 	print("Iris :", center_iris, radius_iris, "Pupille :", center_pupille, radius_pupille)
 
 	if visualize:
-		#cv2.circle(img, (center_iris[1], center_iris[0]), radius_iris, 255)
-		#cv2.circle(img, (center_pupille[1], center_pupille[0]), radius_pupille, 255)
-		cv2.imshow("Input", img)
+		img_copy = img.copy()
+		cv2.circle(img_copy, (center_iris[1], center_iris[0]), radius_iris, 255)
+		cv2.circle(img_copy, (center_pupille[1], center_pupille[0]), radius_pupille, 255)
+		cv2.imshow("Input", img_copy)
 		cv2.waitKey(1)
 
 
@@ -812,7 +813,7 @@ decidability_plot = []
 
 # GET FEATURES
 
-print("Getting features")
+print("Getting features from", len(train_norm_set), "seg maps")
 features_set = []
 
 for norm in train_norm_set:
@@ -822,11 +823,16 @@ for norm in train_norm_set:
 
 	features_set.append([name, features])
 
+print("features_set len", len(features_set))
 
 print("Matching...")
 
-# PROCESS
 
+
+# PROCESS
+separation_point = 0.36
+
+"""
 matching_list_intra = []
 matching_list_inter = []
 
@@ -853,7 +859,7 @@ deci =  decidability(np.mean(matching_list_intra), np.mean(matching_list_inter),
 print("Decidability =", deci)
 
 
-separation_point = 0.36
+
 far = len(np.where(np.array(matching_list_inter) <= separation_point))/len(matching_list_inter)
 frr = len(np.where(np.array(matching_list_intra) >= separation_point))/len(matching_list_intra)
 
@@ -873,32 +879,61 @@ plt.hist(matching_list_intra, bins=100, density=True)
 plt.show()
 
 
+"""
 
 
+success = 0
 
 # TEST INPUT
 
-# input_img = test_set[44][1]
-# seg_map = get_normalisation_eye(input_img, visualize=True)
-# features_base = get_features_eye(seg_map)
+#for input_img_index in range(len(test_set)):
+
+input_img_index = int(input("Eye index > "))
+input_img = test_set[input_img_index][1]
+
+#try:
+seg_map = get_normalisation_eye(input_img, visualize=True)
+#except Exception:
+#	continue
+features_base = get_features_eye(seg_map, 1/42, 0.4)
+
+#TEST SCAN ALL TRAIN_SET
+matching_list = []
+
+for i in range(len(train_norm_set)):
+
+	#seg_map = train_norm_set[i][1]
+	features = features_set[i][1]
+
+	hamming_score = feature_matching(features_base, features)
+
+	#print("Matching:", hamming_score, "\n")
+	if hamming_score != None:
+		matching_list.append(hamming_score)
+	else :
+		matching_list.append(1.0)
 
 
-# TEST SCAN ALL TRAIN_SET
-# for i in range(len(train_norm_set)):
+print(np.argwhere(np.array(matching_list) <= separation_point))
+print("Awaited results", input_img_index*4, "to", (input_img_index+1)*4 - 1)
+print("Best result", np.argmin(np.array(matching_list)))
 
-# 	seg_map = train_norm_set[i][1]
-# 	features = get_features_eye(seg_map)
+if np.argmin(np.array(matching_list)) >= input_img_index*4 and np.argmin(np.array(matching_list)) < (input_img_index+1)*4 :
+	print("SUCCESS !")
+	success += 1
 
-# 	hamming_score = feature_matching(features_base, features)
+print("")
 
-# 	print("Matching:", hamming_score, "\n")
-# 	matching_list.append(hamming_score)
+print("Nb success", success)
+print("Success rate", success/len(test_set))
 
 
-# plt.scatter(list(range(len(matching_list))), matching_list)
-# plt.show()
+plt.scatter(list(range(len(matching_list))), matching_list)
+plt.show()
 
-# print(np.argwhere(np.array(matching_list) < 0.46))
+
+
+
 
 
 
