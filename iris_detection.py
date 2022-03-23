@@ -749,6 +749,84 @@ def decidability(mean1, mean2, std1, std2):
 	return np.abs(mean2 - mean1) / np.sqrt((std2**2 + std1**2)/2)
 
 
+def gen_inter_intra(features_set, visualize=True):
+
+	matching_list_intra = []
+	matching_list_inter = []
+
+	for i, j in combinations(range(len(train_norm_set)), 2):
+
+		features1 = features_set[i][1]
+		features2 = features_set[j][1]
+
+		hamming_score = feature_matching(features1, features2)
+
+		if hamming_score != None:
+			if j < ((i//4)+1)*4: # intra class
+				matching_list_intra.append(hamming_score)
+			else :
+				matching_list_inter.append(hamming_score)
+
+
+		#print(i)
+
+	print("[INTRA] Mean", np.mean(matching_list_intra), "Std", np.std(matching_list_intra))
+	print("[INTER] Mean", np.mean(matching_list_inter), "Std", np.std(matching_list_inter))
+
+	deci = decidability(np.mean(matching_list_intra), np.mean(matching_list_inter), np.std(matching_list_intra), np.std(matching_list_inter))
+	print("Decidability =", deci)
+
+
+
+	far = len(np.where(np.array(matching_list_inter) <= separation_point))/len(matching_list_inter)
+	frr = len(np.where(np.array(matching_list_intra) >= separation_point))/len(matching_list_intra)
+
+	print("FAR =", far, "FRR =", frr)
+
+
+	if visualize:
+		plt.hist(matching_list_inter, bins=100, density=True) #, density=True
+		plt.hist(matching_list_intra, bins=100, density=True)
+		plt.show()
+
+	return deci
+
+
+def gen_decidability_plot():
+
+	decidability_plot = []
+	#range_plot = range(1, 70, 3) # lambda0
+	range_plot = np.arange(0.1, 0.9, 0.1) #sigma
+
+
+	for x in range_plot:
+
+		print("Getting features for x =", x)
+
+		# GET FEATURES
+		#print("Getting features from", len(train_norm_set), "seg maps")
+		features_set = []
+
+		for norm in train_norm_set:
+			name, seg_map = norm
+
+			features = get_features_eye(seg_map, 1/43, x)
+
+			features_set.append([name, features])
+
+		#print("features_set len", len(features_set))
+
+
+		decidability_plot.append(gen_inter_intra(features_set, visualize=False))
+
+
+	plt.scatter(list(range_plot), decidability_plot)
+	plt.show()
+
+
+
+
+
 # MAIN
 
 db_path = "MMU-Iris-Database/"
@@ -804,13 +882,6 @@ for i in range(len(train_set)):
 #print(train_norm_set)
 
 
-decidability_plot = []
-#range_plot = range(50, 100, 3) # lambda0
-#range_plot = np.arange(0.1, 0.9, 0.1) #sigma
-
-
-#for x in range_plot:
-
 # GET FEATURES
 
 print("Getting features from", len(train_norm_set), "seg maps")
@@ -832,7 +903,13 @@ print("Matching...")
 # PROCESS
 separation_point = 0.36
 
+#gen_inter_intra(features_set, visualize=True)
+#gen_decidability_plot()
+
+
 """
+# INTER - INTRA plot
+
 matching_list_intra = []
 matching_list_inter = []
 
@@ -886,7 +963,11 @@ success = 0
 
 # TEST INPUT
 
+#time_list = []
+
 #for input_img_index in range(len(test_set)):
+
+#t1 = time.time()
 
 input_img_index = int(input("Eye index > "))
 input_img = test_set[input_img_index][1]
@@ -922,6 +1003,8 @@ if np.argmin(np.array(matching_list)) >= input_img_index*4 and np.argmin(np.arra
 	print("SUCCESS !")
 	success += 1
 
+#time_list.append(time.time() - t1)
+
 print("")
 
 print("Nb success", success)
@@ -931,6 +1014,10 @@ print("Success rate", success/len(test_set))
 plt.scatter(list(range(len(matching_list))), matching_list)
 plt.show()
 
+#print("TIME Mean", np.mean(time_list), "Std", np.std(time_list))
+
+#plt.hist(time_list, bins=10)
+#plt.show()
 
 
 
