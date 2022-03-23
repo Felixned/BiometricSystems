@@ -46,6 +46,15 @@ def decidability(mean1, mean2, std1, std2):
 
 def gen_inter_intra(features_set, visualize=True):
 
+	matching_list_intra = []
+	matching_list_inter = []
+
+	for i, j in combinations(range(len(train_norm_set)), 2):
+
+		features1 = features_set[i][1]
+		features2 = features_set[j][1]
+
+		hamming_score = feature_matching(features1, features2)
 
 		if hamming_score != None:
 			if j < ((i//4)+1)*4: # intra class
@@ -76,7 +85,7 @@ def gen_inter_intra(features_set, visualize=True):
 		plt.show()
 
 	return deci
-
+	 
 
 def gen_decidability_plot():
 

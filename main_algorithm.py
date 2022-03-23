@@ -4,6 +4,37 @@ from feature_extraction_and_encoding import *
 from smoothed_zscore_algo import *
 from low_complexity import *
 
+
+# DATA IMPORT
+
+def import_db(db_path, nb_pers, train_split):
+
+
+	path_left = "left/"
+	path_right = "right/"
+
+	train_set = []
+	test_set = []
+
+	for p in range(1, nb_pers+1):
+		# Left
+		path = db_path + "/" + str(p) + "/" + path_left + "*.bmp"
+		img_left = [(file, cv2.imread(file, cv2.IMREAD_GRAYSCALE)) for file in glob.glob(path)]
+
+		train_set += img_left[:train_split]
+		test_set += img_left[train_split:]
+
+		# Right
+		path = db_path + "/" + str(p) + "/" + path_right + "*.bmp"
+		img_right = [(file, cv2.imread(file, cv2.IMREAD_GRAYSCALE)) for file in glob.glob(path)]
+
+		train_set += img_right[:train_split]
+		test_set += img_right[train_split:]
+
+
+	return train_set, test_set
+
+
 # MAIN
 
 db_path = "MMU-Iris-Database/"
