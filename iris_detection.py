@@ -161,7 +161,7 @@ def hysteresis(amp, ksize):
 
 
 
-def weighted_canny(img, ksize, wx, low, high, visualize = True):
+def weighted_canny(img, ksize, wx, low, high, visualize = False):
 	"""
 	img : grayscale img
 	ksize : gaussian kernel
@@ -200,10 +200,19 @@ def weighted_canny(img, ksize, wx, low, high, visualize = True):
 		cv2.imshow("grad_x", grad_x)
 		cv2.imshow("grad_y", grad_y)
 
-		cv2.imshow("amp", amp)
-		cv2.imshow("amp_nonmax", amp_nonmax)
-		cv2.imshow("amp_thresh", amp_thresh)
-		cv2.imshow("amp_hyst", amp_hyst)
+		cv2.imshow("grad weighted", amp)
+		cv2.imshow("grad non max suppression", amp_nonmax)
+		cv2.imshow("amp threshold", amp_thresh)
+		cv2.imshow("amp hysteresis", amp_hyst)
+
+		other_path = "Others/Canny Edge/"
+		cv2.imwrite(other_path + "grad_x" + ".png", grad_x)
+		cv2.imwrite(other_path + "grad_y" + ".png", grad_y)
+		cv2.imwrite(other_path + "amp" + ".png", amp)
+		cv2.imwrite(other_path + "amp_nonmax" + ".png", amp_nonmax)
+		cv2.imwrite(other_path + "amp_thresh" + ".png", amp_thresh)
+		cv2.imwrite(other_path + "amp_hyst" + ".png", amp_hyst)
+
 
 
 	return amp_hyst
@@ -418,8 +427,8 @@ def hough_best_circles(accumulator, region, peak_ratio=2.5):
 
 		cv2.circle(img_rad, (center_xy[1], center_xy[0]), 3, 255)
 
-		# cv2.imshow("Hough", img_rad)
-		# cv2.waitKey(1)
+		#cv2.imshow("Hough", img_rad)
+		#cv2.waitKey(0)
 
 
 	return plot_values, plot_pnsr, centers
@@ -564,12 +573,33 @@ def feature_extraction(seg_map, filter, visualize=False):
 			#print(signal_filtered)
 			gabor_ifft = np.fft.ifft(filter(f))
 			plt.plot(f, filter(f))
+			plt.title("1D Log Gabor filter")
+			plt.xlabel("f")
+			plt.ylabel("value")
 			plt.show()
+
 			plt.plot(f, signal_fft.real)
+			plt.title("Signal FFT")
+			plt.xlabel("f")
+			plt.ylabel("value")
 			plt.show()
+
 			plt.plot(f, signal_filtered.real)
+			plt.title("Filtered Signal FFT")
+			plt.xlabel("f")
+			plt.ylabel("value")
 			plt.show()
+
+			plt.plot(x[:signal.shape[0]//2], signal_filtered_ifft_real)
+			plt.title("Filtered Signal IFFT real")
+			plt.xlabel("x")
+			plt.ylabel("value")
+			plt.show()
+
 			plt.plot(x[:signal.shape[0]//2], signal_filtered_ifft_imag)
+			plt.title("Filtered Signal IFFT imag")
+			plt.xlabel("x")
+			plt.ylabel("value")
 			plt.show()
 
 
@@ -643,7 +673,7 @@ def get_normalisation_eye(input_img, roi=3/4, rad_step=1, seg_shape=(20, 256), v
 	#lag = 10
 
 	print("Acquiring edges...")
-	img_edge = weighted_canny(img, ksize=5, wx=0.5, low=40, high=80, visualize=False)
+	img_edge = weighted_canny(img, ksize=5, wx=0.5, low=40, high=80)
 	if visualize:
 		cv2.imshow("Canny implementation", img_edge)
 
@@ -952,6 +982,7 @@ success = 0
 
 input_img_index = int(input("Eye index > "))
 input_img = test_set[input_img_index][1]
+
 
 #try:
 seg_map = get_normalisation_eye(input_img, visualize=True)
