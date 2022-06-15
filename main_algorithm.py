@@ -218,7 +218,10 @@ print("Awaited results", input_img_index*4, "to", (input_img_index+1)*4 - 1)
 print("Best result", np.argmin(np.array(matching_list)))
 
 if np.argmin(np.array(matching_list)) >= input_img_index*4 and np.argmin(np.array(matching_list)) < (input_img_index+1)*4 :
-	print("SUCCESS !")
+	f = open('success_banner.txt', 'r')
+	file_contents = f.read()
+	print (file_contents)
+	f.close()
 	success += 1
 
 #time_list.append(time.time() - t1)
